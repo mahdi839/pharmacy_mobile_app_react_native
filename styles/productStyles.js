@@ -52,8 +52,14 @@ export const productStyles = StyleSheet.create({
   },
   price: {
     color: '#1a7f5a',
-    fontSize: 14,
+    fontSize: 15,
     fontWeight: '800',
+  },
+  mrp: {
+    color: '#7a8b84',
+    fontSize: 11,
+    marginTop: 3,
+    textDecorationLine: 'line-through',
   },
   details: {
     color: '#31463e',

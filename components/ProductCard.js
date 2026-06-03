@@ -3,6 +3,10 @@ import { Image, Text, TouchableOpacity, View } from 'react-native';
 import { productStyles } from '../styles/productStyles';
 
 export default function ProductCard({ product, onAddToCart }) {
+  const mrp = Number(product.price || 0);
+  const discount = Number(product.discount || 0);
+  const discountedPrice = Number(product.discounted_price ?? (mrp - (mrp * discount) / 100));
+
   return (
     <View style={productStyles.card}>
       <View style={productStyles.imageWrap}>
@@ -25,7 +29,8 @@ export default function ProductCard({ product, onAddToCart }) {
         {product.strength} | {product.form}
       </Text>
       <View style={productStyles.priceRow}>
-        <Text style={productStyles.price}>BDT {product.price}</Text>
+        <Text style={productStyles.mrp}>BDT {mrp.toFixed(2)}</Text>
+        <Text style={productStyles.price}>BDT {discountedPrice.toFixed(2)}</Text>
       </View>
 
       <TouchableOpacity

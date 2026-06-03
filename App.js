@@ -1,5 +1,14 @@
-import { useEffect, useState } from 'react';
-import { ActivityIndicator, FlatList, Text, View } from 'react-native';
+import { useEffect, useMemo, useState } from 'react';
+import {
+  ActivityIndicator,
+  Alert,
+  FlatList,
+  ScrollView,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View,
+} from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 
 import Navbar from './components/Navbar';
@@ -7,14 +16,36 @@ import ProductCard from './components/ProductCard';
 import SearchFilters from './components/SearchFilters';
 import { API_BASE_URL } from './config/api';
 import { appStyles } from './styles/appStyles';
+import { cartStyles } from './styles/cartStyles';
+
+const money = (value) => Number(value || 0).toFixed(2);
+const productPrice = (product) => Number(product.discounted_price ?? product.price ?? 0);
 
 export default function App() {
+  const [screen, setScreen] = useState('products');
   const [productSearch, setProductSearch] = useState('');
   const [companySearch, setCompanySearch] = useState('');
   const [products, setProducts] = useState([]);
   const [cartItems, setCartItems] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
+  const [customer, setCustomer] = useState({
+    customer_name: '',
+    customer_phone: '',
+    customer_address: '',
+    notes: '',
+  });
+
+  const cartCount = useMemo(
+    () => cartItems.reduce((sum, item) => sum + item.quantity, 0),
+    [cartItems],
+  );
+
+  const cartTotal = useMemo(
+    () => cartItems.reduce((sum, item) => sum + productPrice(item.product) * item.quantity, 0),
+    [cartItems],
+  );
 
   useEffect(() => {
     const timeout = setTimeout(() => {
@@ -51,13 +82,84 @@ export default function App() {
   }, [companySearch, productSearch]);
 
   const handleAddToCart = (product) => {
-    setCartItems((currentItems) => [...currentItems, product]);
+    setCartItems((currentItems) => {
+      const existingItem = currentItems.find((item) => item.product.id === product.id);
+
+      if (existingItem) {
+        return currentItems.map((item) => (
+          item.product.id === product.id
+            ? { ...item, quantity: item.quantity + 1 }
+            : item
+        ));
+      }
+
+      return [...currentItems, { product, quantity: 1 }];
+    });
   };
 
-  return (
-    <View style={appStyles.container}>
-      <StatusBar style="light" />
-      <Navbar cartCount={cartItems.length} />
+  const updateQuantity = (productId, change) => {
+    setCartItems((currentItems) => currentItems
+      .map((item) => (
+        item.product.id === productId
+          ? { ...item, quantity: Math.max(0, item.quantity + change) }
+          : item
+      ))
+      .filter((item) => item.quantity > 0));
+  };
+
+  const submitOrder = async () => {
+    if (!customer.customer_name.trim() || !customer.customer_phone.trim() || !customer.customer_address.trim()) {
+      Alert.alert('Missing details', 'Please enter customer name, phone, and address.');
+      return;
+    }
+
+    if (cartItems.length === 0) {
+      Alert.alert('Empty cart', 'Please add medicine before checkout.');
+      return;
+    }
+
+    setIsSubmitting(true);
+
+    try {
+      const response = await fetch(`${API_BASE_URL}/orders`, {
+        method: 'POST',
+        headers: {
+          Accept: 'application/json',
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          ...customer,
+          items: cartItems.map((item) => ({
+            product_id: item.product.id,
+            quantity: item.quantity,
+          })),
+        }),
+      });
+
+      const payload = await response.json();
+
+      if (!response.ok) {
+        throw new Error(payload.message || 'Could not place order.');
+      }
+
+      setCartItems([]);
+      setCustomer({
+        customer_name: '',
+        customer_phone: '',
+        customer_address: '',
+        notes: '',
+      });
+      setScreen('products');
+      Alert.alert('Order placed', payload.message || 'Your order has been placed.');
+    } catch (error) {
+      Alert.alert('Order failed', error.message || 'Could not place order.');
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const renderProducts = () => (
+    <>
       <SearchFilters
         productSearch={productSearch}
         companySearch={companySearch}
@@ -88,6 +190,125 @@ export default function App() {
         contentContainerStyle={appStyles.productList}
         showsVerticalScrollIndicator={false}
       />
+    </>
+  );
+
+  const renderCart = () => (
+    <ScrollView contentContainerStyle={cartStyles.page}>
+      <View style={cartStyles.headerRow}>
+        <Text style={cartStyles.title}>Cart</Text>
+        <TouchableOpacity style={cartStyles.secondaryButton} onPress={() => setScreen('products')}>
+          <Text style={cartStyles.secondaryButtonText}>Products</Text>
+        </TouchableOpacity>
+      </View>
+
+      {cartItems.length === 0 ? (
+        <Text style={appStyles.emptyText}>Your cart is empty.</Text>
+      ) : (
+        cartItems.map((item) => (
+          <View key={item.product.id} style={cartStyles.item}>
+            <View style={cartStyles.itemInfo}>
+              <Text style={cartStyles.itemName}>{item.product.name}</Text>
+              <Text style={cartStyles.itemMeta}>{item.product.company}</Text>
+              <Text style={cartStyles.itemPrice}>BDT {money(productPrice(item.product))}</Text>
+            </View>
+            <View style={cartStyles.qtyControl}>
+              <TouchableOpacity style={cartStyles.qtyButton} onPress={() => updateQuantity(item.product.id, -1)}>
+                <Text style={cartStyles.qtyButtonText}>-</Text>
+              </TouchableOpacity>
+              <Text style={cartStyles.qtyText}>{item.quantity}</Text>
+              <TouchableOpacity style={cartStyles.qtyButton} onPress={() => updateQuantity(item.product.id, 1)}>
+                <Text style={cartStyles.qtyButtonText}>+</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        ))
+      )}
+
+      <View style={cartStyles.totalBox}>
+        <Text style={cartStyles.totalLabel}>Total Amount</Text>
+        <Text style={cartStyles.totalValue}>BDT {money(cartTotal)}</Text>
+      </View>
+
+      <TouchableOpacity
+        style={[cartStyles.primaryButton, cartItems.length === 0 ? cartStyles.disabledButton : null]}
+        onPress={() => cartItems.length > 0 && setScreen('checkout')}
+        activeOpacity={0.85}
+      >
+        <Text style={cartStyles.primaryButtonText}>Checkout</Text>
+      </TouchableOpacity>
+    </ScrollView>
+  );
+
+  const renderCheckout = () => (
+    <ScrollView contentContainerStyle={cartStyles.page}>
+      <View style={cartStyles.headerRow}>
+        <Text style={cartStyles.title}>Checkout</Text>
+        <TouchableOpacity style={cartStyles.secondaryButton} onPress={() => setScreen('cart')}>
+          <Text style={cartStyles.secondaryButtonText}>Cart</Text>
+        </TouchableOpacity>
+      </View>
+
+      <View style={cartStyles.form}>
+        <Text style={cartStyles.label}>Customer Name</Text>
+        <TextInput
+          style={cartStyles.input}
+          value={customer.customer_name}
+          onChangeText={(value) => setCustomer((current) => ({ ...current, customer_name: value }))}
+          placeholder="Name"
+        />
+
+        <Text style={cartStyles.label}>Phone</Text>
+        <TextInput
+          style={cartStyles.input}
+          value={customer.customer_phone}
+          onChangeText={(value) => setCustomer((current) => ({ ...current, customer_phone: value }))}
+          placeholder="Phone"
+          keyboardType="phone-pad"
+        />
+
+        <Text style={cartStyles.label}>Address</Text>
+        <TextInput
+          style={[cartStyles.input, cartStyles.textArea]}
+          value={customer.customer_address}
+          onChangeText={(value) => setCustomer((current) => ({ ...current, customer_address: value }))}
+          placeholder="Delivery address"
+          multiline
+        />
+
+        <Text style={cartStyles.label}>Notes</Text>
+        <TextInput
+          style={[cartStyles.input, cartStyles.textArea]}
+          value={customer.notes}
+          onChangeText={(value) => setCustomer((current) => ({ ...current, notes: value }))}
+          placeholder="Optional notes"
+          multiline
+        />
+      </View>
+
+      <View style={cartStyles.totalBox}>
+        <Text style={cartStyles.totalLabel}>Payable Amount</Text>
+        <Text style={cartStyles.totalValue}>BDT {money(cartTotal)}</Text>
+      </View>
+
+      <TouchableOpacity
+        style={[cartStyles.primaryButton, isSubmitting ? cartStyles.disabledButton : null]}
+        onPress={submitOrder}
+        activeOpacity={0.85}
+        disabled={isSubmitting}
+      >
+        <Text style={cartStyles.primaryButtonText}>{isSubmitting ? 'Submitting...' : 'Place Order'}</Text>
+      </TouchableOpacity>
+    </ScrollView>
+  );
+
+  return (
+    <View style={appStyles.container}>
+      <StatusBar style="light" />
+      <Navbar cartCount={cartCount} onCartPress={() => setScreen('cart')} />
+      {screen === 'products' ? renderProducts() : null}
+      {screen === 'cart' ? renderCart() : null}
+      {screen === 'checkout' ? renderCheckout() : null}
     </View>
   );
 }

@@ -26,7 +26,6 @@ export default function ProductCard({ product, onAddToCart }) {
       </Text>
       <View style={productStyles.priceRow}>
         <Text style={productStyles.price}>BDT {product.price}</Text>
-        <Text style={productStyles.stock}>Stock: {product.stock}</Text>
       </View>
 
       <TouchableOpacity

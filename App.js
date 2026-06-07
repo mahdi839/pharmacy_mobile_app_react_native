@@ -11,6 +11,7 @@ import {
 } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 
+import BottomNav from './components/BottomNav';
 import Navbar from './components/Navbar';
 import ProductCard from './components/ProductCard';
 import SearchFilters from './components/SearchFilters';
@@ -20,6 +21,18 @@ import { cartStyles } from './styles/cartStyles';
 
 const money = (value) => Number(value || 0).toFixed(2);
 const productPrice = (product) => Number(product.discounted_price ?? product.price ?? 0);
+const productMrp = (product) => Number(product.price ?? 0);
+const apiHeaders = {
+  Accept: 'application/json',
+  'bypass-tunnel-reminder': 'true',
+};
+const apiErrorMessage = (error, fallbackMessage) => {
+  if (error?.message === 'Network request failed') {
+    return `Network request failed. Check that the backend is running at ${API_BASE_URL}.`;
+  }
+
+  return error?.message || fallbackMessage;
+};
 
 export default function App() {
   const [screen, setScreen] = useState('products');
@@ -47,6 +60,16 @@ export default function App() {
     [cartItems],
   );
 
+  const subtotal = useMemo(
+    () => cartItems.reduce((sum, item) => sum + productMrp(item.product) * item.quantity, 0),
+    [cartItems],
+  );
+
+  const discountTotal = useMemo(
+    () => subtotal - cartTotal,
+    [cartTotal, subtotal],
+  );
+
   useEffect(() => {
     const timeout = setTimeout(() => {
       const fetchProducts = async () => {
@@ -59,7 +82,9 @@ export default function App() {
         ].filter(Boolean).join('&');
 
         try {
-          const response = await fetch(`${API_BASE_URL}/products${query ? `?${query}` : ''}`);
+          const response = await fetch(`${API_BASE_URL}/products${query ? `?${query}` : ''}`, {
+            headers: apiHeaders,
+          });
           const payload = await response.json();
 
           if (!response.ok) {
@@ -68,7 +93,7 @@ export default function App() {
 
           setProducts(payload.data || []);
         } catch (error) {
-          setErrorMessage(error.message || 'Could not load products.');
+          setErrorMessage(apiErrorMessage(error, 'Could not load products.'));
           setProducts([]);
         } finally {
           setIsLoading(false);
@@ -124,7 +149,7 @@ export default function App() {
       const response = await fetch(`${API_BASE_URL}/orders`, {
         method: 'POST',
         headers: {
-          Accept: 'application/json',
+          ...apiHeaders,
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
@@ -152,7 +177,7 @@ export default function App() {
       setScreen('products');
       Alert.alert('Order placed', payload.message || 'Your order has been placed.');
     } catch (error) {
-      Alert.alert('Order failed', error.message || 'Could not place order.');
+      Alert.alert('Order failed', apiErrorMessage(error, 'Could not place order.'));
     } finally {
       setIsSubmitting(false);
     }
@@ -226,8 +251,10 @@ export default function App() {
       )}
 
       <View style={cartStyles.totalBox}>
-        <Text style={cartStyles.totalLabel}>Total Amount</Text>
-        <Text style={cartStyles.totalValue}>BDT {money(cartTotal)}</Text>
+        <View style={cartStyles.summaryRow}>
+          <Text style={cartStyles.totalLabel}>Total Amount</Text>
+          <Text style={cartStyles.totalValue}>BDT {money(cartTotal)}</Text>
+        </View>
       </View>
 
       <TouchableOpacity
@@ -287,8 +314,28 @@ export default function App() {
       </View>
 
       <View style={cartStyles.totalBox}>
-        <Text style={cartStyles.totalLabel}>Payable Amount</Text>
-        <Text style={cartStyles.totalValue}>BDT {money(cartTotal)}</Text>
+        <View style={cartStyles.summaryRows}>
+          <View style={cartStyles.summaryRow}>
+            <Text style={cartStyles.totalLabel}>Total Price</Text>
+            <Text style={cartStyles.summaryValue}>BDT {money(subtotal)}</Text>
+          </View>
+          <View style={cartStyles.summaryRow}>
+            <Text style={cartStyles.totalLabel}>VAT</Text>
+            <Text style={cartStyles.summaryValue}>BDT 0.00</Text>
+          </View>
+          <View style={cartStyles.summaryRow}>
+            <Text style={cartStyles.totalLabel}>Shipping Cost</Text>
+            <Text style={cartStyles.summaryValue}>BDT 0.00</Text>
+          </View>
+          <View style={cartStyles.summaryRow}>
+            <Text style={cartStyles.totalLabel}>Discount</Text>
+            <Text style={cartStyles.discountValue}>- BDT {money(discountTotal)}</Text>
+          </View>
+          <View style={cartStyles.summaryRow}>
+            <Text style={cartStyles.grandLabel}>Grand Total</Text>
+            <Text style={cartStyles.totalValue}>BDT {money(cartTotal)}</Text>
+          </View>
+        </View>
       </View>
 
       <TouchableOpacity
@@ -302,13 +349,27 @@ export default function App() {
     </ScrollView>
   );
 
+  const renderAccount = () => (
+    <ScrollView contentContainerStyle={cartStyles.page}>
+      <Text style={cartStyles.title}>Account</Text>
+      <View style={cartStyles.form}>
+        <Text style={cartStyles.itemName}>Guest Customer</Text>
+        <Text style={cartStyles.itemMeta}>You can place orders without login or registration.</Text>
+      </View>
+    </ScrollView>
+  );
+
   return (
     <View style={appStyles.container}>
       <StatusBar style="light" />
       <Navbar cartCount={cartCount} onCartPress={() => setScreen('cart')} />
-      {screen === 'products' ? renderProducts() : null}
-      {screen === 'cart' ? renderCart() : null}
-      {screen === 'checkout' ? renderCheckout() : null}
+      <View style={appStyles.screenBody}>
+        {screen === 'products' ? renderProducts() : null}
+        {screen === 'cart' ? renderCart() : null}
+        {screen === 'checkout' ? renderCheckout() : null}
+        {screen === 'account' ? renderAccount() : null}
+      </View>
+      <BottomNav activeScreen={screen} onChange={setScreen} cartCount={cartCount} />
     </View>
   );
 }

@@ -2,7 +2,7 @@ import { StyleSheet } from 'react-native';
 
 export const navbarStyles = StyleSheet.create({
   navbar: {
-    backgroundColor: '#1a7f5a',
+    backgroundColor: '#12372f',
     paddingTop: 50,
     paddingBottom: 14,
     paddingHorizontal: 20,
@@ -14,6 +14,31 @@ export const navbarStyles = StyleSheet.create({
     color: '#ffffff',
     fontSize: 20,
     fontWeight: 'bold',
+  },
+  logoWrap: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 9,
+  },
+  logoIcon: {
+    width: 40,
+    height: 40,
+    borderRadius: 8,
+    backgroundColor: '#dff7eb',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  logoMad: {
+    color: '#ffffff',
+    fontSize: 22,
+    lineHeight: 23,
+    fontWeight: '900',
+  },
+  logoBangladesh: {
+    color: '#9ad8bf',
+    fontSize: 11,
+    fontWeight: '800',
+    marginTop: 1,
   },
   cartButton: {
     position: 'relative',

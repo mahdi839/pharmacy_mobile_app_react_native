@@ -5,9 +5,12 @@ export const appStyles = StyleSheet.create({
     flex: 1,
     backgroundColor: '#f4f7f6',
   },
+  screenBody: {
+    flex: 1,
+  },
   productList: {
     padding: 10,
-    paddingBottom: 32,
+    paddingBottom: 24,
     flexGrow: 1,
   },
   productRow: {

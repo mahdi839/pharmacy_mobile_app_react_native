@@ -80,9 +80,14 @@ export const cartStyles = StyleSheet.create({
     padding: 14,
     marginTop: 6,
     marginBottom: 12,
+  },
+  summaryRows: {
+    gap: 9,
+  },
+  summaryRow: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
     alignItems: 'center',
+    justifyContent: 'space-between',
   },
   totalLabel: {
     color: '#657870',
@@ -93,6 +98,21 @@ export const cartStyles = StyleSheet.create({
     color: '#173d31',
     fontSize: 18,
     fontWeight: '800',
+  },
+  summaryValue: {
+    color: '#173d31',
+    fontSize: 14,
+    fontWeight: '800',
+  },
+  discountValue: {
+    color: '#b42318',
+    fontSize: 14,
+    fontWeight: '800',
+  },
+  grandLabel: {
+    color: '#173d31',
+    fontSize: 15,
+    fontWeight: '900',
   },
   primaryButton: {
     backgroundColor: '#1a7f5a',

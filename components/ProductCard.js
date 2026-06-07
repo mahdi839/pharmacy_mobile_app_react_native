@@ -2,13 +2,13 @@ import { Image, Text, TouchableOpacity, View } from 'react-native';
 
 import { productStyles } from '../styles/productStyles';
 
-export default function ProductCard({ product, onAddToCart }) {
+export default function ProductCard({ product, onAddToCart, style }) {
   const mrp = Number(product.price || 0);
   const discount = Number(product.discount || 0);
   const discountedPrice = Number(product.discounted_price ?? (mrp - (mrp * discount) / 100));
 
   return (
-    <View style={productStyles.card}>
+    <View style={[productStyles.card, style]}>
       <View style={productStyles.imageWrap}>
         <Image source={{ uri: product.image }} style={productStyles.image} />
         <View style={productStyles.discountBadge}>

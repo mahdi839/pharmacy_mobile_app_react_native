@@ -6,6 +6,7 @@ import { bottomNavStyles } from '../styles/bottomNavStyles';
 const tabs = [
   { key: 'products', label: 'Home', icon: 'home-variant' },
   { key: 'cart', label: 'Cart', icon: 'cart' },
+  { key: 'notifications', label: 'Notify', icon: 'bell' },
   { key: 'account', label: 'Account', icon: 'account-circle' },
 ];
 

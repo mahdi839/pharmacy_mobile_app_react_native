@@ -17,15 +17,18 @@ import ProductCard from './components/ProductCard';
 import SearchFilters from './components/SearchFilters';
 import { API_BASE_URL } from './config/api';
 import { appStyles } from './styles/appStyles';
+import { authStyles } from './styles/authStyles';
 import { cartStyles } from './styles/cartStyles';
+import { homeStyles } from './styles/homeStyles';
 
 const money = (value) => Number(value || 0).toFixed(2);
 const productPrice = (product) => Number(product.discounted_price ?? product.price ?? 0);
 const productMrp = (product) => Number(product.price ?? 0);
-const apiHeaders = {
+const baseHeaders = {
   Accept: 'application/json',
   'bypass-tunnel-reminder': 'true',
 };
+
 const apiErrorMessage = (error, fallbackMessage) => {
   if (error?.message === 'Network request failed') {
     return `Network request failed. Check that the backend is running at ${API_BASE_URL}.`;
@@ -36,9 +39,22 @@ const apiErrorMessage = (error, fallbackMessage) => {
 
 export default function App() {
   const [screen, setScreen] = useState('products');
+  const [authMode, setAuthMode] = useState('login');
+  const [authToken, setAuthToken] = useState('');
+  const [authUser, setAuthUser] = useState(null);
+  const [authForm, setAuthForm] = useState({
+    name: '',
+    gmail: '',
+    phone: '',
+    password: '',
+  });
+  const [authError, setAuthError] = useState('');
+  const [isAuthSubmitting, setIsAuthSubmitting] = useState(false);
   const [productSearch, setProductSearch] = useState('');
   const [companySearch, setCompanySearch] = useState('');
   const [products, setProducts] = useState([]);
+  const [homeSliders, setHomeSliders] = useState([]);
+  const [orders, setOrders] = useState([]);
   const [cartItems, setCartItems] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -49,6 +65,11 @@ export default function App() {
     customer_address: '',
     notes: '',
   });
+
+  const authHeaders = useMemo(() => ({
+    ...baseHeaders,
+    ...(authToken ? { Authorization: `Bearer ${authToken}` } : {}),
+  }), [authToken]);
 
   const cartCount = useMemo(
     () => cartItems.reduce((sum, item) => sum + item.quantity, 0),
@@ -70,9 +91,54 @@ export default function App() {
     [cartTotal, subtotal],
   );
 
+  const latestOrder = orders[0];
+
   useEffect(() => {
+    if (!authUser) {
+      return;
+    }
+
+    setCustomer((current) => ({
+      ...current,
+      customer_name: current.customer_name || authUser.name || '',
+      customer_phone: current.customer_phone || authUser.phone || '',
+    }));
+  }, [authUser]);
+
+  const fetchOrders = async (headers = authHeaders) => {
+    if (!authToken) {
+      return;
+    }
+
+    try {
+      const response = await fetch(`${API_BASE_URL}/customer/orders`, { headers });
+      const payload = await response.json();
+
+      if (!response.ok) {
+        throw new Error(payload.message || 'Could not load orders.');
+      }
+
+      setOrders(payload.data || []);
+    } catch {
+      setOrders([]);
+    }
+  };
+
+  useEffect(() => {
+    if (!authToken) {
+      return;
+    }
+
+    fetchOrders();
+  }, [authToken]);
+
+  useEffect(() => {
+    if (!authToken) {
+      return;
+    }
+
     const timeout = setTimeout(() => {
-      const fetchProducts = async () => {
+      const fetchHome = async () => {
         setIsLoading(true);
         setErrorMessage('');
 
@@ -82,16 +148,23 @@ export default function App() {
         ].filter(Boolean).join('&');
 
         try {
-          const response = await fetch(`${API_BASE_URL}/products${query ? `?${query}` : ''}`, {
-            headers: apiHeaders,
-          });
-          const payload = await response.json();
+          const [productResponse, sliderResponse] = await Promise.all([
+            fetch(`${API_BASE_URL}/products${query ? `?${query}` : ''}`, { headers: authHeaders }),
+            fetch(`${API_BASE_URL}/home-sliders`, { headers: authHeaders }),
+          ]);
+          const productPayload = await productResponse.json();
+          const sliderPayload = await sliderResponse.json();
 
-          if (!response.ok) {
-            throw new Error(payload.message || 'Could not load products.');
+          if (!productResponse.ok) {
+            throw new Error(productPayload.message || 'Could not load products.');
           }
 
-          setProducts(payload.data || []);
+          if (!sliderResponse.ok) {
+            throw new Error(sliderPayload.message || 'Could not load home sliders.');
+          }
+
+          setProducts(productPayload.data || []);
+          setHomeSliders(sliderPayload.data || []);
         } catch (error) {
           setErrorMessage(apiErrorMessage(error, 'Could not load products.'));
           setProducts([]);
@@ -100,11 +173,73 @@ export default function App() {
         }
       };
 
-      fetchProducts();
+      fetchHome();
     }, 250);
 
     return () => clearTimeout(timeout);
-  }, [companySearch, productSearch]);
+  }, [authToken, companySearch, productSearch]);
+
+  const updateAuthForm = (key, value) => {
+    setAuthForm((current) => ({ ...current, [key]: value }));
+  };
+
+  const submitAuth = async () => {
+    setAuthError('');
+    setIsAuthSubmitting(true);
+
+    const isRegister = authMode === 'register';
+    const payload = isRegister
+      ? authForm
+      : { login: authForm.gmail || authForm.phone, password: authForm.password };
+
+    try {
+      const response = await fetch(`${API_BASE_URL}/customer/${isRegister ? 'register' : 'login'}`, {
+        method: 'POST',
+        headers: {
+          ...baseHeaders,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(payload),
+      });
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.message || 'Could not continue.');
+      }
+
+      setAuthToken(data.token);
+      setAuthUser(data.customer);
+      setScreen('products');
+      setAuthForm({ name: '', gmail: '', phone: '', password: '' });
+    } catch (error) {
+      setAuthError(apiErrorMessage(error, 'Could not continue.'));
+    } finally {
+      setIsAuthSubmitting(false);
+    }
+  };
+
+  const logout = async () => {
+    try {
+      await fetch(`${API_BASE_URL}/customer/logout`, {
+        method: 'POST',
+        headers: authHeaders,
+      });
+    } catch {
+      // Logout locally even if the network is unavailable.
+    }
+
+    setAuthToken('');
+    setAuthUser(null);
+    setOrders([]);
+    setCartItems([]);
+    setScreen('products');
+    setCustomer({
+      customer_name: '',
+      customer_phone: '',
+      customer_address: '',
+      notes: '',
+    });
+  };
 
   const handleAddToCart = (product) => {
     setCartItems((currentItems) => {
@@ -149,7 +284,7 @@ export default function App() {
       const response = await fetch(`${API_BASE_URL}/orders`, {
         method: 'POST',
         headers: {
-          ...apiHeaders,
+          ...authHeaders,
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
@@ -168,12 +303,14 @@ export default function App() {
       }
 
       setCartItems([]);
-      setCustomer({
-        customer_name: '',
-        customer_phone: '',
+      setCustomer((current) => ({
+        ...current,
+        customer_name: authUser?.name || current.customer_name,
+        customer_phone: authUser?.phone || current.customer_phone,
         customer_address: '',
         notes: '',
-      });
+      }));
+      await fetchOrders(authHeaders);
       setScreen('products');
       Alert.alert('Order placed', payload.message || 'Your order has been placed.');
     } catch (error) {
@@ -183,8 +320,104 @@ export default function App() {
     }
   };
 
-  const renderProducts = () => (
+  const renderAuth = () => {
+    const isRegister = authMode === 'register';
+
+    return (
+      <View style={authStyles.page}>
+        <StatusBar style="dark" />
+        <Text style={authStyles.brand}>MAD Bangladesh</Text>
+        <Text style={authStyles.subtitle}>Login to order medicine from the mobile app.</Text>
+
+        <View style={authStyles.form}>
+          <Text style={authStyles.title}>{isRegister ? 'Create Account' : 'Login'}</Text>
+          {authError ? <Text style={authStyles.error}>{authError}</Text> : null}
+
+          {isRegister ? (
+            <>
+              <Text style={authStyles.label}>Name</Text>
+              <TextInput
+                style={authStyles.input}
+                value={authForm.name}
+                onChangeText={(value) => updateAuthForm('name', value)}
+                placeholder="Your name"
+              />
+            </>
+          ) : null}
+
+          <Text style={authStyles.label}>{isRegister ? 'Gmail' : 'Gmail or Mobile'}</Text>
+          <TextInput
+            style={authStyles.input}
+            value={authForm.gmail}
+            onChangeText={(value) => updateAuthForm('gmail', value)}
+            placeholder={isRegister ? 'you@gmail.com' : 'Gmail or mobile number'}
+            autoCapitalize="none"
+            keyboardType={isRegister ? 'email-address' : 'default'}
+          />
+
+          {isRegister ? (
+            <>
+              <Text style={authStyles.label}>Mobile</Text>
+              <TextInput
+                style={authStyles.input}
+                value={authForm.phone}
+                onChangeText={(value) => updateAuthForm('phone', value)}
+                placeholder="Mobile number"
+                keyboardType="phone-pad"
+              />
+            </>
+          ) : null}
+
+          <Text style={authStyles.label}>Password</Text>
+          <TextInput
+            style={authStyles.input}
+            value={authForm.password}
+            onChangeText={(value) => updateAuthForm('password', value)}
+            placeholder="Password"
+            secureTextEntry
+          />
+
+          <TouchableOpacity
+            style={[authStyles.button, isAuthSubmitting ? cartStyles.disabledButton : null]}
+            onPress={submitAuth}
+            disabled={isAuthSubmitting}
+            activeOpacity={0.85}
+          >
+            <Text style={authStyles.buttonText}>
+              {isAuthSubmitting ? 'Please wait...' : isRegister ? 'Register' : 'Login'}
+            </Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity onPress={() => setAuthMode(isRegister ? 'login' : 'register')}>
+            <Text style={authStyles.switchText}>
+              {isRegister ? 'Already have an account? Login' : 'New customer? Register'}
+            </Text>
+          </TouchableOpacity>
+        </View>
+      </View>
+    );
+  };
+
+  const renderHomeHeader = () => (
     <>
+      {homeSliders.map((slider) => (
+        <View key={slider.id} style={homeStyles.sliderSection}>
+          <View style={homeStyles.sliderHeader}>
+            <Text style={homeStyles.sliderTitle}>{slider.name}</Text>
+          </View>
+          <FlatList
+            horizontal
+            data={slider.products || []}
+            keyExtractor={(item) => `slider-${slider.id}-${item.id}`}
+            renderItem={({ item }) => (
+              <ProductCard product={item} onAddToCart={handleAddToCart} style={homeStyles.sliderCard} />
+            )}
+            contentContainerStyle={homeStyles.sliderList}
+            showsHorizontalScrollIndicator={false}
+          />
+        </View>
+      ))}
+
       <SearchFilters
         productSearch={productSearch}
         companySearch={companySearch}
@@ -201,21 +434,25 @@ export default function App() {
           <ActivityIndicator color="#1a7f5a" />
         </View>
       ) : null}
-      <FlatList
-        numColumns={2}
-        data={products}
-        keyExtractor={(item) => String(item.id)}
-        renderItem={({ item }) => (
-          <ProductCard product={item} onAddToCart={handleAddToCart} />
-        )}
-        ListEmptyComponent={!isLoading ? (
-          <Text style={appStyles.emptyText}>No products found.</Text>
-        ) : null}
-        columnWrapperStyle={appStyles.productRow}
-        contentContainerStyle={appStyles.productList}
-        showsVerticalScrollIndicator={false}
-      />
     </>
+  );
+
+  const renderProducts = () => (
+    <FlatList
+      numColumns={2}
+      data={products}
+      keyExtractor={(item) => String(item.id)}
+      renderItem={({ item }) => (
+        <ProductCard product={item} onAddToCart={handleAddToCart} />
+      )}
+      ListHeaderComponent={renderHomeHeader}
+      ListEmptyComponent={!isLoading ? (
+        <Text style={appStyles.emptyText}>No products found.</Text>
+      ) : null}
+      columnWrapperStyle={appStyles.productRow}
+      contentContainerStyle={appStyles.productList}
+      showsVerticalScrollIndicator={false}
+    />
   );
 
   const renderCart = () => (
@@ -349,15 +586,59 @@ export default function App() {
     </ScrollView>
   );
 
-  const renderAccount = () => (
+  const renderNotifications = () => (
     <ScrollView contentContainerStyle={cartStyles.page}>
-      <Text style={cartStyles.title}>Account</Text>
-      <View style={cartStyles.form}>
-        <Text style={cartStyles.itemName}>Guest Customer</Text>
-        <Text style={cartStyles.itemMeta}>You can place orders without login or registration.</Text>
+      <Text style={cartStyles.title}>Notifications</Text>
+      <View style={homeStyles.accountCard}>
+        <Text style={homeStyles.accountName}>No notifications yet</Text>
+        <Text style={homeStyles.accountMeta}>Order and offer notifications will appear here later.</Text>
       </View>
     </ScrollView>
   );
+
+  const renderAccount = () => (
+    <ScrollView contentContainerStyle={cartStyles.page}>
+      <View style={cartStyles.headerRow}>
+        <Text style={cartStyles.title}>Account</Text>
+        <TouchableOpacity style={cartStyles.secondaryButton} onPress={logout}>
+          <Text style={cartStyles.secondaryButtonText}>Logout</Text>
+        </TouchableOpacity>
+      </View>
+
+      <View style={homeStyles.accountCard}>
+        <Text style={homeStyles.accountName}>{authUser?.name}</Text>
+        <Text style={homeStyles.accountMeta}>{authUser?.phone}</Text>
+        {authUser?.gmail ? <Text style={homeStyles.accountMeta}>{authUser.gmail}</Text> : null}
+        {latestOrder ? (
+          <View style={homeStyles.statusPill}>
+            <Text style={homeStyles.statusText}>Latest: {latestOrder.status}</Text>
+          </View>
+        ) : null}
+      </View>
+
+      <Text style={homeStyles.sectionTitle}>Previous Orders</Text>
+      {orders.length === 0 ? (
+        <Text style={appStyles.emptyText}>No orders yet.</Text>
+      ) : (
+        orders.map((order) => (
+          <View key={order.id} style={homeStyles.orderRow}>
+            <View style={homeStyles.orderTop}>
+              <Text style={homeStyles.orderNumber}>{order.order_number}</Text>
+              <View style={homeStyles.statusPill}>
+                <Text style={homeStyles.statusText}>{order.status}</Text>
+              </View>
+            </View>
+            <Text style={homeStyles.orderMeta}>BDT {money(order.total)}</Text>
+            <Text style={homeStyles.orderMeta}>{new Date(order.created_at).toLocaleString()}</Text>
+          </View>
+        ))
+      )}
+    </ScrollView>
+  );
+
+  if (!authUser) {
+    return renderAuth();
+  }
 
   return (
     <View style={appStyles.container}>
@@ -367,6 +648,7 @@ export default function App() {
         {screen === 'products' ? renderProducts() : null}
         {screen === 'cart' ? renderCart() : null}
         {screen === 'checkout' ? renderCheckout() : null}
+        {screen === 'notifications' ? renderNotifications() : null}
         {screen === 'account' ? renderAccount() : null}
       </View>
       <BottomNav activeScreen={screen} onChange={setScreen} cartCount={cartCount} />

@@ -7,3 +7,8 @@ Tunnel connected.
 Tunnel ready.
 Waiting on http://localhost:8081
 Logs for your project will appear below.
+Android .\index.js ░░░░░░░░░░░░░░░░  0.0% (0/1)
+Android .\index.js ▓░░░░░░░░░░░░░░░ 11.1% ( 72/221)
+Android .\index.js ▓▓▓▓▓▓▓▓▓▓▓▓░░░░ 75.9% (453/520)
+Android .\index.js ▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓░ 99.7% (733/734)
+Android Bundled 11923ms index.js (734 modules)

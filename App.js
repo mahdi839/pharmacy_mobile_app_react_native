@@ -10,6 +10,7 @@ import {
   View,
 } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
+import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 
 import BottomNav from './components/BottomNav';
 import Navbar from './components/Navbar';
@@ -267,6 +268,10 @@ export default function App() {
       .filter((item) => item.quantity > 0));
   };
 
+  const removeFromCart = (productId) => {
+    setCartItems((currentItems) => currentItems.filter((item) => item.product.id !== productId));
+  };
+
   const submitOrder = async () => {
     if (!customer.customer_name.trim() || !customer.customer_phone.trim() || !customer.customer_address.trim()) {
       Alert.alert('Missing details', 'Please enter customer name, phone, and address.');
@@ -326,7 +331,7 @@ export default function App() {
     return (
       <View style={authStyles.page}>
         <StatusBar style="dark" />
-        <Text style={authStyles.brand}>MAD Bangladesh</Text>
+        <Text style={authStyles.brand}>MED Bangladesh</Text>
         <Text style={authStyles.subtitle}>Login to order medicine from the mobile app.</Text>
 
         <View style={authStyles.form}>
@@ -481,6 +486,15 @@ export default function App() {
               <Text style={cartStyles.qtyText}>{item.quantity}</Text>
               <TouchableOpacity style={cartStyles.qtyButton} onPress={() => updateQuantity(item.product.id, 1)}>
                 <Text style={cartStyles.qtyButtonText}>+</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={cartStyles.deleteButton}
+                onPress={() => removeFromCart(item.product.id)}
+                activeOpacity={0.8}
+                accessibilityRole="button"
+                accessibilityLabel={`Remove ${item.product.name} from cart`}
+              >
+                <MaterialCommunityIcons name="trash-can-outline" size={20} color="#b42318" />
               </TouchableOpacity>
             </View>
           </View>

@@ -72,6 +72,16 @@ export const cartStyles = StyleSheet.create({
     minWidth: 22,
     textAlign: 'center',
   },
+  deleteButton: {
+    width: 34,
+    height: 34,
+    borderRadius: 6,
+    backgroundColor: '#fff1f0',
+    borderWidth: 1,
+    borderColor: '#f4b4ad',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   totalBox: {
     backgroundColor: '#ffffff',
     borderRadius: 8,

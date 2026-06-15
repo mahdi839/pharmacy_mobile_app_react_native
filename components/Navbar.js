@@ -13,7 +13,7 @@ export default function Navbar({ cartCount = 0, onCartPress }) {
           {/* <MaterialCommunityIcons name="medical-bag" size={24}  /> */}
         </View>
         <View>
-          <Text style={navbarStyles.logoMad}>MAD</Text>
+          <Text style={navbarStyles.logoMad}>MED</Text>
           <Text style={navbarStyles.logoBangladesh}>Bangladesh</Text>
         </View>
       </View>

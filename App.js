@@ -25,6 +25,7 @@ import { homeStyles } from './styles/homeStyles';
 const money = (value) => Number(value || 0).toFixed(2);
 const productPrice = (product) => Number(product.discounted_price ?? product.price ?? 0);
 const productMrp = (product) => Number(product.price ?? 0);
+const normalizedText = (value) => String(value || '').trim().toLowerCase();
 const baseHeaders = {
   Accept: 'application/json',
   'bypass-tunnel-reminder': 'true',
@@ -143,14 +144,13 @@ export default function App() {
         setIsLoading(true);
         setErrorMessage('');
 
-        const query = [
-          productSearch.trim() ? `name=${encodeURIComponent(productSearch.trim())}` : '',
-          companySearch.trim() ? `company=${encodeURIComponent(companySearch.trim())}` : '',
-        ].filter(Boolean).join('&');
+        const productName = productSearch.trim();
+        const companyName = normalizedText(companySearch);
+        const query = productName ? `?name=${encodeURIComponent(productName)}` : '';
 
         try {
           const [productResponse, sliderResponse] = await Promise.all([
-            fetch(`${API_BASE_URL}/products${query ? `?${query}` : ''}`, { headers: authHeaders }),
+            fetch(`${API_BASE_URL}/products${query}`, { headers: authHeaders }),
             fetch(`${API_BASE_URL}/home-sliders`, { headers: authHeaders }),
           ]);
           const productPayload = await productResponse.json();
@@ -164,7 +164,10 @@ export default function App() {
             throw new Error(sliderPayload.message || 'Could not load home sliders.');
           }
 
-          setProducts(productPayload.data || []);
+          const loadedProducts = productPayload.data || [];
+          setProducts(companyName
+            ? loadedProducts.filter((product) => normalizedText(product.company).includes(companyName))
+            : loadedProducts);
           setHomeSliders(sliderPayload.data || []);
         } catch (error) {
           setErrorMessage(apiErrorMessage(error, 'Could not load products.'));
@@ -422,13 +425,6 @@ export default function App() {
           />
         </View>
       ))}
-
-      <SearchFilters
-        productSearch={productSearch}
-        companySearch={companySearch}
-        onProductSearchChange={setProductSearch}
-        onCompanySearchChange={setCompanySearch}
-      />
       {errorMessage ? (
         <View style={appStyles.messageBox}>
           <Text style={appStyles.errorText}>{errorMessage}</Text>
@@ -443,21 +439,29 @@ export default function App() {
   );
 
   const renderProducts = () => (
-    <FlatList
-      numColumns={2}
-      data={products}
-      keyExtractor={(item) => String(item.id)}
-      renderItem={({ item }) => (
-        <ProductCard product={item} onAddToCart={handleAddToCart} />
-      )}
-      ListHeaderComponent={renderHomeHeader}
-      ListEmptyComponent={!isLoading ? (
-        <Text style={appStyles.emptyText}>No products found.</Text>
-      ) : null}
-      columnWrapperStyle={appStyles.productRow}
-      contentContainerStyle={appStyles.productList}
-      showsVerticalScrollIndicator={false}
-    />
+    <View style={appStyles.productsScreen}>
+      <SearchFilters
+        productSearch={productSearch}
+        companySearch={companySearch}
+        onProductSearchChange={setProductSearch}
+        onCompanySearchChange={setCompanySearch}
+      />
+      <FlatList
+        numColumns={2}
+        data={products}
+        keyExtractor={(item) => String(item.id)}
+        renderItem={({ item }) => (
+          <ProductCard product={item} onAddToCart={handleAddToCart} />
+        )}
+        ListHeaderComponent={renderHomeHeader}
+        ListEmptyComponent={!isLoading ? (
+          <Text style={appStyles.emptyText}>No products found.</Text>
+        ) : null}
+        columnWrapperStyle={appStyles.productRow}
+        contentContainerStyle={appStyles.productList}
+        showsVerticalScrollIndicator={false}
+      />
+    </View>
   );
 
   const renderCart = () => (

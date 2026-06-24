@@ -8,6 +8,9 @@ export const appStyles = StyleSheet.create({
   screenBody: {
     flex: 1,
   },
+  productsScreen: {
+    flex: 1,
+  },
   productList: {
     padding: 10,
     paddingBottom: 24,

@@ -10,10 +10,12 @@ export default function ProductCard({ product, onAddToCart, style }) {
   return (
     <View style={[productStyles.card, style]}>
       <View style={productStyles.imageWrap}>
-        <Image source={{ uri: product.image }} style={productStyles.image} />
-        <View style={productStyles.discountBadge}>
-          <Text style={productStyles.discountText}>{product.discount}% OFF</Text>
-        </View>
+        <Image source={{ uri: product.image }} style={productStyles.image} resizeMode="contain" />
+        {discount > 0 ? (
+          <View style={productStyles.discountBadge}>
+            <Text style={productStyles.discountText}>{discount}% OFF</Text>
+          </View>
+        ) : null}
       </View>
 
       <View style={productStyles.productInfo}>

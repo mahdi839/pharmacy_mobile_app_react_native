@@ -10,9 +10,12 @@ import {
   View,
 } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
+import * as SecureStore from 'expo-secure-store';
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 
 import BottomNav from './components/BottomNav';
+import BannerCarousel from './components/BannerCarousel';
+import HomeProductSlider from './components/HomeProductSlider';
 import Navbar from './components/Navbar';
 import ProductCard from './components/ProductCard';
 import SearchFilters from './components/SearchFilters';
@@ -30,6 +33,7 @@ const baseHeaders = {
   Accept: 'application/json',
   'bypass-tunnel-reminder': 'true',
 };
+const AUTH_SESSION_KEY = 'med-bangladesh-auth-session';
 
 const apiErrorMessage = (error, fallbackMessage) => {
   if (error?.message === 'Network request failed') {
@@ -44,10 +48,12 @@ export default function App() {
   const [authMode, setAuthMode] = useState('login');
   const [authToken, setAuthToken] = useState('');
   const [authUser, setAuthUser] = useState(null);
+  const [isAuthRestoring, setIsAuthRestoring] = useState(true);
   const [authForm, setAuthForm] = useState({
     name: '',
     gmail: '',
     phone: '',
+    address: '',
     password: '',
   });
   const [authError, setAuthError] = useState('');
@@ -56,6 +62,7 @@ export default function App() {
   const [companySearch, setCompanySearch] = useState('');
   const [products, setProducts] = useState([]);
   const [homeSliders, setHomeSliders] = useState([]);
+  const [banners, setBanners] = useState([]);
   const [orders, setOrders] = useState([]);
   const [cartItems, setCartItems] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -96,6 +103,39 @@ export default function App() {
   const latestOrder = orders[0];
 
   useEffect(() => {
+    let isMounted = true;
+
+    const restoreAuthSession = async () => {
+      try {
+        const savedSession = await SecureStore.getItemAsync(AUTH_SESSION_KEY);
+
+        if (!savedSession) {
+          return;
+        }
+
+        const session = JSON.parse(savedSession);
+
+        if (session?.token && session?.customer && isMounted) {
+          setAuthToken(session.token);
+          setAuthUser(session.customer);
+        }
+      } catch {
+        await SecureStore.deleteItemAsync(AUTH_SESSION_KEY).catch(() => {});
+      } finally {
+        if (isMounted) {
+          setIsAuthRestoring(false);
+        }
+      }
+    };
+
+    restoreAuthSession();
+
+    return () => {
+      isMounted = false;
+    };
+  }, []);
+
+  useEffect(() => {
     if (!authUser) {
       return;
     }
@@ -104,6 +144,7 @@ export default function App() {
       ...current,
       customer_name: current.customer_name || authUser.name || '',
       customer_phone: current.customer_phone || authUser.phone || '',
+      customer_address: current.customer_address || authUser.address || '',
     }));
   }, [authUser]);
 
@@ -149,9 +190,12 @@ export default function App() {
         const query = productName ? `?name=${encodeURIComponent(productName)}` : '';
 
         try {
-          const [productResponse, sliderResponse] = await Promise.all([
+          const [productResponse, sliderResponse, bannerPayload] = await Promise.all([
             fetch(`${API_BASE_URL}/products${query}`, { headers: authHeaders }),
             fetch(`${API_BASE_URL}/home-sliders`, { headers: authHeaders }),
+            fetch(`${API_BASE_URL}/banners`, { headers: authHeaders })
+              .then(async (response) => (response.ok ? response.json() : { data: [] }))
+              .catch(() => ({ data: [] })),
           ]);
           const productPayload = await productResponse.json();
           const sliderPayload = await sliderResponse.json();
@@ -169,6 +213,7 @@ export default function App() {
             ? loadedProducts.filter((product) => normalizedText(product.company).includes(companyName))
             : loadedProducts);
           setHomeSliders(sliderPayload.data || []);
+          setBanners(bannerPayload.data || []);
         } catch (error) {
           setErrorMessage(apiErrorMessage(error, 'Could not load products.'));
           setProducts([]);
@@ -211,10 +256,20 @@ export default function App() {
         throw new Error(data.message || 'Could not continue.');
       }
 
+      await SecureStore.setItemAsync(AUTH_SESSION_KEY, JSON.stringify({
+        token: data.token,
+        customer: data.customer,
+      }));
       setAuthToken(data.token);
       setAuthUser(data.customer);
       setScreen('products');
-      setAuthForm({ name: '', gmail: '', phone: '', password: '' });
+      setAuthForm({
+        name: '',
+        gmail: '',
+        phone: '',
+        address: '',
+        password: '',
+      });
     } catch (error) {
       setAuthError(apiErrorMessage(error, 'Could not continue.'));
     } finally {
@@ -232,6 +287,7 @@ export default function App() {
       // Logout locally even if the network is unavailable.
     }
 
+    await SecureStore.deleteItemAsync(AUTH_SESSION_KEY).catch(() => {});
     setAuthToken('');
     setAuthUser(null);
     setOrders([]);
@@ -259,6 +315,8 @@ export default function App() {
 
       return [...currentItems, { product, quantity: 1 }];
     });
+    setScreen('cart');
+    Alert.alert('Added to cart', `${product.name} was added successfully.`);
   };
 
   const updateQuantity = (productId, change) => {
@@ -311,11 +369,20 @@ export default function App() {
       }
 
       setCartItems([]);
+      const updatedAuthUser = {
+        ...authUser,
+        address: customer.customer_address,
+      };
+      setAuthUser(updatedAuthUser);
+      await SecureStore.setItemAsync(AUTH_SESSION_KEY, JSON.stringify({
+        token: authToken,
+        customer: updatedAuthUser,
+      })).catch(() => {});
       setCustomer((current) => ({
         ...current,
         customer_name: authUser?.name || current.customer_name,
         customer_phone: authUser?.phone || current.customer_phone,
-        customer_address: '',
+        customer_address: current.customer_address,
         notes: '',
       }));
       await fetchOrders(authHeaders);
@@ -332,7 +399,10 @@ export default function App() {
     const isRegister = authMode === 'register';
 
     return (
-      <View style={authStyles.page}>
+      <ScrollView
+        contentContainerStyle={authStyles.scrollPage}
+        keyboardShouldPersistTaps="handled"
+      >
         <StatusBar style="dark" />
         <Text style={authStyles.brand}>MED Bangladesh</Text>
         <Text style={authStyles.subtitle}>Login to order medicine from the mobile app.</Text>
@@ -350,6 +420,7 @@ export default function App() {
                 onChangeText={(value) => updateAuthForm('name', value)}
                 placeholder="Your name"
               />
+
             </>
           ) : null}
 
@@ -372,6 +443,15 @@ export default function App() {
                 onChangeText={(value) => updateAuthForm('phone', value)}
                 placeholder="Mobile number"
                 keyboardType="phone-pad"
+              />
+
+              <Text style={authStyles.label}>Address</Text>
+              <TextInput
+                style={[authStyles.input, authStyles.textArea]}
+                value={authForm.address}
+                onChangeText={(value) => updateAuthForm('address', value)}
+                placeholder="Delivery address"
+                multiline
               />
             </>
           ) : null}
@@ -402,28 +482,19 @@ export default function App() {
             </Text>
           </TouchableOpacity>
         </View>
-      </View>
+      </ScrollView>
     );
   };
 
   const renderHomeHeader = () => (
     <>
+      <BannerCarousel banners={banners} />
       {homeSliders.map((slider) => (
-        <View key={slider.id} style={homeStyles.sliderSection}>
-          <View style={homeStyles.sliderHeader}>
-            <Text style={homeStyles.sliderTitle}>{slider.name}</Text>
-          </View>
-          <FlatList
-            horizontal
-            data={slider.products || []}
-            keyExtractor={(item) => `slider-${slider.id}-${item.id}`}
-            renderItem={({ item }) => (
-              <ProductCard product={item} onAddToCart={handleAddToCart} style={homeStyles.sliderCard} />
-            )}
-            contentContainerStyle={homeStyles.sliderList}
-            showsHorizontalScrollIndicator={false}
-          />
-        </View>
+        <HomeProductSlider
+          key={slider.id}
+          slider={slider}
+          onAddToCart={handleAddToCart}
+        />
       ))}
       {errorMessage ? (
         <View style={appStyles.messageBox}>
@@ -517,7 +588,7 @@ export default function App() {
         onPress={() => cartItems.length > 0 && setScreen('checkout')}
         activeOpacity={0.85}
       >
-        <Text style={cartStyles.primaryButtonText}>Checkout</Text>
+        <Text style={cartStyles.primaryButtonText}>Place Order</Text>
       </TouchableOpacity>
     </ScrollView>
   );
@@ -525,7 +596,7 @@ export default function App() {
   const renderCheckout = () => (
     <ScrollView contentContainerStyle={cartStyles.page}>
       <View style={cartStyles.headerRow}>
-        <Text style={cartStyles.title}>Checkout</Text>
+        <Text style={cartStyles.title}>Review & Confirm</Text>
         <TouchableOpacity style={cartStyles.secondaryButton} onPress={() => setScreen('cart')}>
           <Text style={cartStyles.secondaryButtonText}>Cart</Text>
         </TouchableOpacity>
@@ -599,7 +670,7 @@ export default function App() {
         activeOpacity={0.85}
         disabled={isSubmitting}
       >
-        <Text style={cartStyles.primaryButtonText}>{isSubmitting ? 'Submitting...' : 'Place Order'}</Text>
+        <Text style={cartStyles.primaryButtonText}>{isSubmitting ? 'Confirming...' : 'Confirm Order'}</Text>
       </TouchableOpacity>
     </ScrollView>
   );
@@ -653,6 +724,15 @@ export default function App() {
       )}
     </ScrollView>
   );
+
+  if (isAuthRestoring) {
+    return (
+      <View style={authStyles.page}>
+        <StatusBar style="dark" />
+        <ActivityIndicator color="#1a7f5a" size="large" />
+      </View>
+    );
+  }
 
   if (!authUser) {
     return renderAuth();

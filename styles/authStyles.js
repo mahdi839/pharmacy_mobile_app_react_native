@@ -7,6 +7,12 @@ export const authStyles = StyleSheet.create({
     justifyContent: 'center',
     padding: 20,
   },
+  scrollPage: {
+    flexGrow: 1,
+    backgroundColor: '#f4f7f6',
+    justifyContent: 'center',
+    padding: 20,
+  },
   brand: {
     color: '#12372f',
     fontSize: 28,
@@ -46,6 +52,11 @@ export const authStyles = StyleSheet.create({
     paddingHorizontal: 12,
     marginBottom: 12,
     backgroundColor: '#ffffff',
+  },
+  textArea: {
+    minHeight: 76,
+    paddingTop: 10,
+    textAlignVertical: 'top',
   },
   button: {
     backgroundColor: '#1a7f5a',

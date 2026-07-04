@@ -5,22 +5,65 @@ export const homeStyles = StyleSheet.create({
     paddingTop: 10,
   },
   sliderHeader: {
-    paddingHorizontal: 10,
+    flexDirection: 'row',
+    alignItems: 'center',
     marginBottom: 8,
+    gap: 9,
   },
   sliderTitle: {
     color: '#173d31',
     fontSize: 18,
     fontWeight: '900',
   },
+  sliderTitleLine: {
+    flex: 1,
+    height: 1,
+    backgroundColor: '#cddbd5',
+  },
+  sliderArrows: {
+    flexDirection: 'row',
+    gap: 6,
+  },
+  sliderArrow: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: '#b8d2c7',
+    backgroundColor: '#ffffff',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   sliderList: {
-    paddingHorizontal: 10,
     paddingBottom: 8,
-    gap: 10,
   },
   sliderCard: {
-    width: 174,
-    marginRight: 10,
+    marginBottom: 0,
+  },
+  bannerSection: {
+    paddingTop: 10,
+    paddingBottom: 4,
+  },
+  bannerImage: {
+    aspectRatio: 3,
+    borderRadius: 8,
+    backgroundColor: '#e8f5ef',
+  },
+  bannerDots: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    gap: 5,
+    marginTop: 7,
+  },
+  bannerDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: '#b8cbc3',
+  },
+  bannerDotActive: {
+    width: 16,
+    backgroundColor: '#1a7f5a',
   },
   accountCard: {
     backgroundColor: '#ffffff',

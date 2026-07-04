@@ -24,16 +24,16 @@ export const productStyles = StyleSheet.create({
   discountBadge: {
     position: 'absolute',
     left: 0,
-    top: 10,
+    top: 3,
     backgroundColor: '#e43d30',
-    paddingVertical: 5,
-    paddingHorizontal: 7,
+    paddingVertical: 4,
+    paddingHorizontal: 6,
     borderTopRightRadius: 5,
     borderBottomRightRadius: 5,
   },
   discountText: {
     color: '#ffffff',
-    fontSize: 10,
+    fontSize: 9,
     fontWeight: '800',
   },
   productInfo: {

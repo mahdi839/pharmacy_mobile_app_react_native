@@ -3,6 +3,7 @@ import {
   ActivityIndicator,
   Alert,
   FlatList,
+  Image,
   ScrollView,
   Text,
   TextInput,
@@ -58,6 +59,7 @@ export default function App() {
   });
   const [authError, setAuthError] = useState('');
   const [isAuthSubmitting, setIsAuthSubmitting] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
   const [productSearch, setProductSearch] = useState('');
   const [companySearch, setCompanySearch] = useState('');
   const [products, setProducts] = useState([]);
@@ -101,6 +103,7 @@ export default function App() {
   );
 
   const latestOrder = orders[0];
+  const isSearching = Boolean(productSearch.trim() || companySearch.trim());
 
   useEffect(() => {
     let isMounted = true;
@@ -398,72 +401,116 @@ export default function App() {
   const renderAuth = () => {
     const isRegister = authMode === 'register';
 
+    const changeAuthMode = (mode) => {
+      setAuthMode(mode);
+      setAuthError('');
+    };
+
+    const renderAuthInput = ({
+      field,
+      icon,
+      label,
+      placeholder,
+      keyboardType = 'default',
+      multiline = false,
+      secure = false,
+    }) => (
+      <View style={authStyles.fieldGroup}>
+        <Text style={authStyles.label}>{label}</Text>
+        <View style={[authStyles.inputShell, multiline ? authStyles.textAreaShell : null]}>
+          <MaterialCommunityIcons name={icon} size={20} color="#668078" />
+          <TextInput
+            style={[authStyles.input, multiline ? authStyles.textArea : null]}
+            value={authForm[field]}
+            onChangeText={(value) => updateAuthForm(field, value)}
+            placeholder={placeholder}
+            placeholderTextColor="#8b9d97"
+            autoCapitalize={keyboardType === 'email-address' ? 'none' : 'sentences'}
+            autoCorrect={false}
+            keyboardType={keyboardType}
+            multiline={multiline}
+            secureTextEntry={secure && !showPassword}
+          />
+          {secure ? (
+            <TouchableOpacity
+              style={authStyles.passwordToggle}
+              onPress={() => setShowPassword((current) => !current)}
+              accessibilityRole="button"
+              accessibilityLabel={showPassword ? 'Hide password' : 'Show password'}
+            >
+              <MaterialCommunityIcons
+                name={showPassword ? 'eye-off-outline' : 'eye-outline'}
+                size={21}
+                color="#668078"
+              />
+            </TouchableOpacity>
+          ) : null}
+        </View>
+      </View>
+    );
+
     return (
       <ScrollView
         contentContainerStyle={authStyles.scrollPage}
         keyboardShouldPersistTaps="handled"
       >
         <StatusBar style="dark" />
-        <Text style={authStyles.brand}>MED Bangladesh</Text>
-        <Text style={authStyles.subtitle}>Login to order medicine from the mobile app.</Text>
+        <View style={authStyles.brandBlock}>
+          <View style={authStyles.logoFrame}>
+            <Image
+              source={require('./assets/icon.png')}
+              style={authStyles.logo}
+              resizeMode="cover"
+              accessibilityLabel="MED Bangladesh app icon"
+            />
+          </View>
+          <Text style={authStyles.brand}>MED Bangladesh</Text>
+          <Text style={authStyles.subtitle}>Trusted medicine, delivered to your door</Text>
+        </View>
 
         <View style={authStyles.form}>
-          <Text style={authStyles.title}>{isRegister ? 'Create Account' : 'Login'}</Text>
+          <Text style={authStyles.title}>{isRegister ? 'Create your account' : 'Welcome back'}</Text>
+          <Text style={authStyles.formSubtitle}>
+            {isRegister ? 'Enter your details to get started.' : 'Sign in to continue to your account.'}
+          </Text>
+
+          <View style={authStyles.modeSwitch}>
+            <TouchableOpacity
+              style={[authStyles.modeOption, !isRegister ? authStyles.modeOptionActive : null]}
+              onPress={() => changeAuthMode('login')}
+            >
+              <Text style={[authStyles.modeText, !isRegister ? authStyles.modeTextActive : null]}>Login</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[authStyles.modeOption, isRegister ? authStyles.modeOptionActive : null]}
+              onPress={() => changeAuthMode('register')}
+            >
+              <Text style={[authStyles.modeText, isRegister ? authStyles.modeTextActive : null]}>Register</Text>
+            </TouchableOpacity>
+          </View>
+
           {authError ? <Text style={authStyles.error}>{authError}</Text> : null}
 
           {isRegister ? (
-            <>
-              <Text style={authStyles.label}>Name</Text>
-              <TextInput
-                style={authStyles.input}
-                value={authForm.name}
-                onChangeText={(value) => updateAuthForm('name', value)}
-                placeholder="Your name"
-              />
-
-            </>
+            renderAuthInput({ field: 'name', icon: 'account-outline', label: 'Full name', placeholder: 'Enter your full name' })
           ) : null}
 
-          <Text style={authStyles.label}>{isRegister ? 'Gmail' : 'Gmail or Mobile'}</Text>
-          <TextInput
-            style={authStyles.input}
-            value={authForm.gmail}
-            onChangeText={(value) => updateAuthForm('gmail', value)}
-            placeholder={isRegister ? 'you@gmail.com' : 'Gmail or mobile number'}
-            autoCapitalize="none"
-            keyboardType={isRegister ? 'email-address' : 'default'}
-          />
+          {renderAuthInput({
+            field: 'gmail',
+            icon: isRegister ? 'email-outline' : 'account-circle-outline',
+            label: isRegister ? 'Email address (optional)' : 'Email or mobile number',
+            placeholder: isRegister ? 'name@example.com' : 'Enter email or mobile number',
+            keyboardType: isRegister ? 'email-address' : 'default',
+          })}
 
           {isRegister ? (
             <>
-              <Text style={authStyles.label}>Mobile</Text>
-              <TextInput
-                style={authStyles.input}
-                value={authForm.phone}
-                onChangeText={(value) => updateAuthForm('phone', value)}
-                placeholder="Mobile number"
-                keyboardType="phone-pad"
-              />
-
-              <Text style={authStyles.label}>Address</Text>
-              <TextInput
-                style={[authStyles.input, authStyles.textArea]}
-                value={authForm.address}
-                onChangeText={(value) => updateAuthForm('address', value)}
-                placeholder="Delivery address"
-                multiline
-              />
+              {renderAuthInput({ field: 'phone', icon: 'phone-outline', label: 'Mobile number', placeholder: '01XXXXXXXXX', keyboardType: 'phone-pad' })}
+              {renderAuthInput({ field: 'address', icon: 'map-marker-outline', label: 'Delivery address', placeholder: 'House, road, area and city', multiline: true })}
             </>
           ) : null}
 
-          <Text style={authStyles.label}>Password</Text>
-          <TextInput
-            style={authStyles.input}
-            value={authForm.password}
-            onChangeText={(value) => updateAuthForm('password', value)}
-            placeholder="Password"
-            secureTextEntry
-          />
+          {renderAuthInput({ field: 'password', icon: 'lock-outline', label: 'Password', placeholder: isRegister ? 'At least 6 characters' : 'Enter your password', secure: true })}
 
           <TouchableOpacity
             style={[authStyles.button, isAuthSubmitting ? cartStyles.disabledButton : null]}
@@ -472,30 +519,47 @@ export default function App() {
             activeOpacity={0.85}
           >
             <Text style={authStyles.buttonText}>
-              {isAuthSubmitting ? 'Please wait...' : isRegister ? 'Register' : 'Login'}
+              {isAuthSubmitting ? 'Please wait...' : isRegister ? 'Create Account' : 'Login Securely'}
             </Text>
           </TouchableOpacity>
 
-          <TouchableOpacity onPress={() => setAuthMode(isRegister ? 'login' : 'register')}>
+          <TouchableOpacity onPress={() => changeAuthMode(isRegister ? 'login' : 'register')}>
             <Text style={authStyles.switchText}>
-              {isRegister ? 'Already have an account? Login' : 'New customer? Register'}
+              {isRegister ? 'Already have an account? ' : 'New to MED Bangladesh? '}
+              <Text style={authStyles.switchAction}>{isRegister ? 'Login' : 'Create account'}</Text>
             </Text>
           </TouchableOpacity>
+
+          <View style={authStyles.secureNote}>
+            <MaterialCommunityIcons name="shield-check-outline" size={16} color="#3a7562" />
+            <Text style={authStyles.secureNoteText}>Your information is securely protected</Text>
+          </View>
         </View>
       </ScrollView>
     );
   };
 
-  const renderHomeHeader = () => (
+  const renderProductListHeader = () => (
     <>
-      <BannerCarousel banners={banners} />
-      {homeSliders.map((slider) => (
-        <HomeProductSlider
-          key={slider.id}
-          slider={slider}
-          onAddToCart={handleAddToCart}
-        />
-      ))}
+      {isSearching ? (
+        <View style={appStyles.searchResultHeader}>
+          <Text style={appStyles.searchResultTitle}>Search results</Text>
+          {!isLoading ? (
+            <Text style={appStyles.searchResultCount}>{products.length} {products.length === 1 ? 'product' : 'products'} found</Text>
+          ) : null}
+        </View>
+      ) : (
+        <>
+          <BannerCarousel banners={banners} />
+          {homeSliders.map((slider) => (
+            <HomeProductSlider
+              key={slider.id}
+              slider={slider}
+              onAddToCart={handleAddToCart}
+            />
+          ))}
+        </>
+      )}
       {errorMessage ? (
         <View style={appStyles.messageBox}>
           <Text style={appStyles.errorText}>{errorMessage}</Text>
@@ -524,7 +588,7 @@ export default function App() {
         renderItem={({ item }) => (
           <ProductCard product={item} onAddToCart={handleAddToCart} />
         )}
-        ListHeaderComponent={renderHomeHeader}
+        ListHeaderComponent={renderProductListHeader}
         ListEmptyComponent={!isLoading ? (
           <Text style={appStyles.emptyText}>No products found.</Text>
         ) : null}

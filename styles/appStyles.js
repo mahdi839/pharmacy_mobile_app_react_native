@@ -19,6 +19,24 @@ export const appStyles = StyleSheet.create({
   productRow: {
     justifyContent: 'space-between',
   },
+  searchResultHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: 2,
+    paddingTop: 8,
+    paddingBottom: 12,
+  },
+  searchResultTitle: {
+    color: '#173d31',
+    fontSize: 18,
+    fontWeight: '900',
+  },
+  searchResultCount: {
+    color: '#6a7e76',
+    fontSize: 12,
+    fontWeight: '700',
+  },
   loadingBox: {
     paddingVertical: 12,
     alignItems: 'center',

@@ -7,19 +7,25 @@
     "development": {
       "developmentClient": true,
       "distribution": "internal",
-       "env": {
+      "env": {
         "EXPO_PUBLIC_API_BASE_URL": "https://medbangladesh.com/api"
       }
     },
     "preview": {
       "distribution": "internal",
-       "env": {
+      "android": {
+        "buildType": "apk"
+      },
+      "env": {
         "EXPO_PUBLIC_API_BASE_URL": "https://medbangladesh.com/api"
       }
     },
     "production": {
       "autoIncrement": true,
-       "env": {
+      "android": {
+        "buildType": "app-bundle"
+      },
+      "env": {
         "EXPO_PUBLIC_API_BASE_URL": "https://medbangladesh.com/api"
       }
     }

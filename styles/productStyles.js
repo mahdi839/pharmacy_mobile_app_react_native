@@ -82,6 +82,9 @@ export const productStyles = StyleSheet.create({
     alignItems: 'center',
     marginTop: 10,
   },
+  outOfStockButton: {
+    backgroundColor: '#e0500d',
+  },
   addButtonText: {
     color: '#ffffff',
     fontSize: 13,

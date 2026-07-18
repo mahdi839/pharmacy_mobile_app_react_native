@@ -1,7 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
-  Alert,
   FlatList,
   Image,
   ScrollView,
@@ -15,6 +14,7 @@ import * as SecureStore from 'expo-secure-store';
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 
 import BottomNav from './components/BottomNav';
+import AppAlert from './components/AppAlert';
 import BannerCarousel from './components/BannerCarousel';
 import HomeProductSlider from './components/HomeProductSlider';
 import Navbar from './components/Navbar';
@@ -70,6 +70,7 @@ export default function App() {
   const [isLoading, setIsLoading] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
+  const [appAlert, setAppAlert] = useState(null);
   const [customer, setCustomer] = useState({
     customer_name: '',
     customer_phone: '',
@@ -305,6 +306,20 @@ export default function App() {
   };
 
   const handleAddToCart = (product) => {
+    if (Number(product.stock || 0) <= 0) {
+      return;
+    }
+
+    const existingItem = cartItems.find((item) => item.product.id === product.id);
+    if (existingItem && existingItem.quantity >= Number(product.stock)) {
+      setAppAlert({
+        type: 'warning',
+        title: 'Stock Limit Reached',
+        message: `Only ${product.stock} unit(s) of ${product.name} are currently available.`,
+      });
+      return;
+    }
+
     setCartItems((currentItems) => {
       const existingItem = currentItems.find((item) => item.product.id === product.id);
 
@@ -318,15 +333,22 @@ export default function App() {
 
       return [...currentItems, { product, quantity: 1 }];
     });
-    setScreen('cart');
-    Alert.alert('Added to cart', `${product.name} was added successfully.`);
+    setAppAlert({
+      type: 'success',
+      title: 'Added to Cart',
+      message: `${product.name} has been added successfully. You can continue shopping.`,
+      buttonText: 'Continue Shopping',
+    });
   };
 
   const updateQuantity = (productId, change) => {
     setCartItems((currentItems) => currentItems
       .map((item) => (
         item.product.id === productId
-          ? { ...item, quantity: Math.max(0, item.quantity + change) }
+          ? {
+            ...item,
+            quantity: Math.min(Number(item.product.stock || 0), Math.max(0, item.quantity + change)),
+          }
           : item
       ))
       .filter((item) => item.quantity > 0));
@@ -338,12 +360,12 @@ export default function App() {
 
   const submitOrder = async () => {
     if (!customer.customer_name.trim() || !customer.customer_phone.trim() || !customer.customer_address.trim()) {
-      Alert.alert('Missing details', 'Please enter customer name, phone, and address.');
+      setAppAlert({ type: 'warning', title: 'Missing Details', message: 'Please enter customer name, phone, and address.' });
       return;
     }
 
     if (cartItems.length === 0) {
-      Alert.alert('Empty cart', 'Please add medicine before checkout.');
+      setAppAlert({ type: 'warning', title: 'Your Cart Is Empty', message: 'Please add medicine before checkout.' });
       return;
     }
 
@@ -390,9 +412,14 @@ export default function App() {
       }));
       await fetchOrders(authHeaders);
       setScreen('products');
-      Alert.alert('Order placed', payload.message || 'Your order has been placed.');
+      setAppAlert({
+        type: 'success',
+        title: 'Order Placed!',
+        message: payload.message || 'Your order has been placed successfully. We will keep you updated.',
+        buttonText: 'Continue Shopping',
+      });
     } catch (error) {
-      Alert.alert('Order failed', apiErrorMessage(error, 'Could not place order.'));
+      setAppAlert({ type: 'error', title: 'Order Failed', message: apiErrorMessage(error, 'Could not place order.'), buttonText: 'Try Again' });
     } finally {
       setIsSubmitting(false);
     }
@@ -814,6 +841,7 @@ export default function App() {
         {screen === 'account' ? renderAccount() : null}
       </View>
       <BottomNav activeScreen={screen} onChange={setScreen} cartCount={cartCount} />
+      <AppAlert alert={appAlert} onClose={() => setAppAlert(null)} />
     </View>
   );
 }

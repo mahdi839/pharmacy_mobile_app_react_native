@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
+  BackHandler,
   FlatList,
   Image,
   ScrollView,
@@ -105,6 +106,20 @@ export default function App() {
 
   const latestOrder = orders[0];
   const isSearching = Boolean(productSearch.trim() || companySearch.trim());
+
+  useEffect(() => {
+    const subscription = BackHandler.addEventListener('hardwareBackPress', () => {
+      if (isSearching) {
+        setProductSearch('');
+        setCompanySearch('');
+      }
+
+      // Keep Android's normal back behavior, including leaving the app.
+      return false;
+    });
+
+    return () => subscription.remove();
+  }, [isSearching]);
 
   useEffect(() => {
     let isMounted = true;

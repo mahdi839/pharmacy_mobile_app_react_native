@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "279423295340",
+    "project_id": "med-bangladesh",
+    "storage_bucket": "med-bangladesh.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:279423295340:android:a21db08b42d31e4c751d49",
+        "android_client_info": {
+          "package_name": "com.medbangladesh.app"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyABoun8ZvU-73CooLobtliypLH-QnL5Lk8"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

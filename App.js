@@ -1,9 +1,13 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
+  AppState,
   BackHandler,
+  Linking,
+  Platform,
   FlatList,
   Image,
+  RefreshControl,
   ScrollView,
   Text,
   TextInput,
@@ -12,6 +16,7 @@ import {
 } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import * as SecureStore from 'expo-secure-store';
+import * as NavigationBar from 'expo-navigation-bar';
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 
 import BottomNav from './components/BottomNav';
@@ -19,13 +24,31 @@ import AppAlert from './components/AppAlert';
 import BannerCarousel from './components/BannerCarousel';
 import HomeProductSlider from './components/HomeProductSlider';
 import Navbar from './components/Navbar';
+import NotificationPermissionModal from './components/NotificationPermissionModal';
 import ProductCard from './components/ProductCard';
+import ProductDetailModal from './components/ProductDetailModal';
 import SearchFilters from './components/SearchFilters';
 import { API_BASE_URL } from './config/api';
+import {
+  fetchNotificationsAsync,
+  fetchProductAsync,
+  getDeviceTokenAsync,
+  getNotificationData,
+  getNotificationPermissionAsync,
+  listenForIncomingNotifications,
+  listenForNotificationTaps,
+  listenForTokenChanges,
+  markNotificationsReadAsync,
+  removeDeviceTokenAsync,
+  requestNotificationPermissionAsync,
+  saveDeviceTokenAsync,
+  takeLaunchNotificationTapAsync,
+} from './services/pushNotifications';
 import { appStyles } from './styles/appStyles';
 import { authStyles } from './styles/authStyles';
 import { cartStyles } from './styles/cartStyles';
 import { homeStyles } from './styles/homeStyles';
+import { notificationStyles } from './styles/notificationStyles';
 
 const money = (value) => Number(value || 0).toFixed(2);
 const productPrice = (product) => Number(product.discounted_price ?? product.price ?? 0);
@@ -36,6 +59,17 @@ const baseHeaders = {
   'bypass-tunnel-reminder': 'true',
 };
 const AUTH_SESSION_KEY = 'med-bangladesh-auth-session';
+
+const timeAgo = (isoDate) => {
+  const seconds = Math.max(0, Math.floor((Date.now() - new Date(isoDate).getTime()) / 1000));
+
+  if (seconds < 60) return 'Just now';
+  if (seconds < 3600) return `${Math.floor(seconds / 60)}m ago`;
+  if (seconds < 86400) return `${Math.floor(seconds / 3600)}h ago`;
+  if (seconds < 7 * 86400) return `${Math.floor(seconds / 86400)}d ago`;
+
+  return new Date(isoDate).toLocaleDateString();
+};
 
 const apiErrorMessage = (error, fallbackMessage) => {
   if (error?.message === 'Network request failed') {
@@ -72,6 +106,19 @@ export default function App() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
   const [appAlert, setAppAlert] = useState(null);
+  // This phone's FCM token once saved for the logged-in customer (used to remove it on logout).
+  const [deviceToken, setDeviceToken] = useState(null);
+  const [permissionPrompt, setPermissionPrompt] = useState(null); // { canAskAgain } while the modal is shown
+  const [notifications, setNotifications] = useState([]);
+  const [unreadCount, setUnreadCount] = useState(0);
+  const [isNotificationsLoading, setIsNotificationsLoading] = useState(false);
+  const [notificationsError, setNotificationsError] = useState('');
+  const [pendingNotificationTap, setPendingNotificationTap] = useState(null); // { productId } from a tapped push
+  const [detailProduct, setDetailProduct] = useState(null);
+  const [isDetailVisible, setIsDetailVisible] = useState(false);
+  const [isDetailLoading, setIsDetailLoading] = useState(false);
+  const handledTapIds = useRef(new Set());
+  const waitingForSettings = useRef(false);
   const [customer, setCustomer] = useState({
     customer_name: '',
     customer_phone: '',
@@ -106,6 +153,98 @@ export default function App() {
 
   const latestOrder = orders[0];
   const isSearching = Boolean(productSearch.trim() || companySearch.trim());
+  const screenRef = useRef(screen);
+
+  /** Gets this phone's FCM token and saves it for the logged-in customer. */
+  const registerDevice = useCallback(async () => {
+    const token = await getDeviceTokenAsync();
+
+    if (token && await saveDeviceTokenAsync(token, authHeaders)) {
+      setDeviceToken(token);
+    }
+  }, [authHeaders]);
+
+  /** Loads the inbox and unread count; optionally marks everything as read afterwards. */
+  const loadNotifications = useCallback(async ({ markRead = false } = {}) => {
+    if (!authToken) {
+      return;
+    }
+
+    setIsNotificationsLoading(true);
+    setNotificationsError('');
+
+    try {
+      const result = await fetchNotificationsAsync(authHeaders);
+      setNotifications(result.data);
+      setUnreadCount(result.unreadCount);
+
+      // Items keep their "new" highlight on screen; only the badge is cleared.
+      if (markRead && result.unreadCount > 0 && await markNotificationsReadAsync(authHeaders)) {
+        setUnreadCount(0);
+      }
+    } catch (error) {
+      setNotificationsError(apiErrorMessage(error, 'Could not load notifications.'));
+    } finally {
+      setIsNotificationsLoading(false);
+    }
+  }, [authHeaders, authToken]);
+
+  const openProductDetail = async (productId) => {
+    setDetailProduct(null);
+    setIsDetailLoading(true);
+    setIsDetailVisible(true);
+
+    const product = await fetchProductAsync(productId, authHeaders).catch(() => null);
+    setDetailProduct(product);
+    setIsDetailLoading(false);
+  };
+
+  const closeProductDetail = () => setIsDetailVisible(false);
+
+  const addDetailProductToCart = (product) => {
+    setIsDetailVisible(false);
+    handleAddToCart(product);
+  };
+
+  const allowNotifications = async () => {
+    const canAskAgain = permissionPrompt?.canAskAgain !== false;
+    setPermissionPrompt(null);
+
+    if (!canAskAgain) {
+      // Android will not show its prompt again; the customer must enable it in Settings.
+      waitingForSettings.current = true;
+      Linking.openSettings().catch(() => {});
+      return;
+    }
+
+    const permission = await requestNotificationPermissionAsync();
+
+    if (permission.granted) {
+      registerDevice();
+    }
+  };
+
+  const dismissPermissionPrompt = () => setPermissionPrompt(null);
+
+  useEffect(() => {
+    if (Platform.OS !== 'android') {
+      return undefined;
+    }
+
+    // Hide Android's bottom navigation bar. Users can still swipe up from the
+    // bottom edge to show it briefly. Re-hide whenever the app comes back to the front.
+    const hideNavigationBar = () => NavigationBar.setVisibilityAsync('hidden').catch(() => {});
+
+    hideNavigationBar();
+
+    const subscription = AppState.addEventListener('change', (state) => {
+      if (state === 'active') {
+        hideNavigationBar();
+      }
+    });
+
+    return () => subscription.remove();
+  }, []);
 
   useEffect(() => {
     const subscription = BackHandler.addEventListener('hardwareBackPress', () => {
@@ -193,6 +332,127 @@ export default function App() {
 
     fetchOrders();
   }, [authToken]);
+
+  useEffect(() => {
+    if (!authToken) {
+      return;
+    }
+
+    let isMounted = true;
+
+    // On every app open (and after login): if notifications are allowed, register this phone;
+    // otherwise show the friendly "Get Offer Alerts" message.
+    getNotificationPermissionAsync().then((permission) => {
+      if (!isMounted) {
+        return;
+      }
+
+      if (permission.granted) {
+        registerDevice();
+      } else {
+        setPermissionPrompt({ canAskAgain: permission.canAskAgain });
+      }
+    });
+
+    // FCM can occasionally replace a phone's token; keep the server up to date.
+    const stopListening = listenForTokenChanges(async (token) => {
+      if (await saveDeviceTokenAsync(token, authHeaders)) {
+        setDeviceToken(token);
+      }
+    });
+
+    return () => {
+      isMounted = false;
+      stopListening();
+    };
+  }, [authToken]);
+
+  useEffect(() => {
+    screenRef.current = screen;
+
+    // Opening the bell tab loads the inbox and marks everything as read.
+    if (screen === 'notifications' && authToken) {
+      loadNotifications({ markRead: true });
+    }
+  }, [screen, authToken]);
+
+  useEffect(() => {
+    if (!authToken) {
+      return undefined;
+    }
+
+    loadNotifications();
+
+    // Refresh the unread badge when the app comes back to the front, and after the
+    // customer returns from the phone's Settings screen with notifications enabled.
+    const appStateSubscription = AppState.addEventListener('change', async (state) => {
+      if (state !== 'active') {
+        return;
+      }
+
+      loadNotifications({ markRead: screenRef.current === 'notifications' });
+
+      if (waitingForSettings.current) {
+        waitingForSettings.current = false;
+        const permission = await getNotificationPermissionAsync();
+
+        if (permission.granted) {
+          registerDevice();
+        }
+      }
+    });
+
+    // A notification arrived while the app is open: update the badge and list.
+    const stopIncoming = listenForIncomingNotifications(() => {
+      loadNotifications({ markRead: screenRef.current === 'notifications' });
+    });
+
+    return () => {
+      appStateSubscription.remove();
+      stopIncoming();
+    };
+  }, [authToken, loadNotifications]);
+
+  useEffect(() => {
+    const handleTap = (response) => {
+      const tapId = response?.notification?.request?.identifier;
+
+      if (tapId) {
+        if (handledTapIds.current.has(tapId)) {
+          return;
+        }
+
+        handledTapIds.current.add(tapId);
+      }
+
+      setPendingNotificationTap(getNotificationData(response?.notification));
+    };
+
+    // Tap that launched the app from a closed state.
+    takeLaunchNotificationTapAsync().then((response) => {
+      if (response) {
+        handleTap(response);
+      }
+    });
+
+    // Taps while the app is open or in the background.
+    return listenForNotificationTaps(handleTap);
+  }, []);
+
+  useEffect(() => {
+    // Wait until the customer is logged in, then open the linked product, or the home page.
+    if (!pendingNotificationTap || !authToken) {
+      return;
+    }
+
+    const { productId } = pendingNotificationTap;
+    setPendingNotificationTap(null);
+    setScreen('products');
+
+    if (productId) {
+      openProductDetail(productId);
+    }
+  }, [pendingNotificationTap, authToken]);
 
   useEffect(() => {
     if (!authToken) {
@@ -297,6 +557,16 @@ export default function App() {
   };
 
   const logout = async () => {
+    // Stop sending this customer's notifications to this phone.
+    if (deviceToken) {
+      await removeDeviceTokenAsync(deviceToken, authHeaders);
+    }
+
+    setDeviceToken(null);
+    setNotifications([]);
+    setUnreadCount(0);
+    setPermissionPrompt(null);
+
     try {
       await fetch(`${API_BASE_URL}/customer/logout`, {
         method: 'POST',
@@ -782,12 +1052,54 @@ export default function App() {
   );
 
   const renderNotifications = () => (
-    <ScrollView contentContainerStyle={cartStyles.page}>
+    <ScrollView
+      contentContainerStyle={cartStyles.page}
+      refreshControl={(
+        <RefreshControl
+          refreshing={isNotificationsLoading && notifications.length > 0}
+          onRefresh={() => loadNotifications({ markRead: true })}
+          colors={['#1a7f5a']}
+        />
+      )}
+    >
       <Text style={cartStyles.title}>Notifications</Text>
-      <View style={homeStyles.accountCard}>
-        <Text style={homeStyles.accountName}>No notifications yet</Text>
-        <Text style={homeStyles.accountMeta}>Order and offer notifications will appear here later.</Text>
-      </View>
+
+      {notificationsError ? <Text style={notificationStyles.errorText}>{notificationsError}</Text> : null}
+
+      {isNotificationsLoading && notifications.length === 0 ? (
+        <ActivityIndicator color="#1a7f5a" size="large" style={{ marginTop: 24 }} />
+      ) : null}
+
+      {!isNotificationsLoading && notifications.length === 0 && !notificationsError ? (
+        <View style={notificationStyles.emptyCard}>
+          <MaterialCommunityIcons name="bell-outline" size={36} color="#7a8b84" />
+          <Text style={notificationStyles.emptyTitle}>No notifications yet</Text>
+          <Text style={notificationStyles.emptyText}>Medicine offers and updates will appear here.</Text>
+        </View>
+      ) : null}
+
+      {notifications.map((item) => (
+        <TouchableOpacity
+          key={item.id}
+          style={[notificationStyles.item, item.is_unread ? notificationStyles.unreadItem : null]}
+          activeOpacity={item.product_id ? 0.85 : 1}
+          disabled={!item.product_id}
+          onPress={() => openProductDetail(item.product_id)}
+        >
+          {item.image_url ? (
+            <Image source={{ uri: item.image_url }} style={notificationStyles.itemImage} resizeMode="cover" />
+          ) : null}
+          <View style={notificationStyles.itemBody}>
+            <View style={notificationStyles.itemHeader}>
+              {item.is_unread ? <View style={notificationStyles.unreadDot} /> : null}
+              <Text style={notificationStyles.itemTitle}>{item.title}</Text>
+              <Text style={notificationStyles.itemTime}>{timeAgo(item.created_at)}</Text>
+            </View>
+            <Text style={notificationStyles.itemText}>{item.body}</Text>
+            {item.product_id ? <Text style={notificationStyles.itemLink}>View product ›</Text> : null}
+          </View>
+        </TouchableOpacity>
+      ))}
     </ScrollView>
   );
 
@@ -855,7 +1167,20 @@ export default function App() {
         {screen === 'notifications' ? renderNotifications() : null}
         {screen === 'account' ? renderAccount() : null}
       </View>
-      <BottomNav activeScreen={screen} onChange={setScreen} cartCount={cartCount} />
+      <BottomNav activeScreen={screen} onChange={setScreen} cartCount={cartCount} unreadCount={unreadCount} />
+      <ProductDetailModal
+        visible={isDetailVisible}
+        product={detailProduct}
+        isLoading={isDetailLoading}
+        onClose={closeProductDetail}
+        onAddToCart={addDetailProductToCart}
+      />
+      <NotificationPermissionModal
+        visible={Boolean(permissionPrompt) && !isDetailVisible}
+        canAskAgain={permissionPrompt?.canAskAgain !== false}
+        onAllow={allowNotifications}
+        onLater={dismissPermissionPrompt}
+      />
       <AppAlert alert={appAlert} onClose={() => setAppAlert(null)} />
     </View>
   );

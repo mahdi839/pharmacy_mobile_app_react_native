@@ -1,4 +1,5 @@
 import { Text, TouchableOpacity, View } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 
 import { bottomNavStyles } from '../styles/bottomNavStyles';
@@ -10,9 +11,17 @@ const tabs = [
   { key: 'account', label: 'Account', icon: 'account-circle' },
 ];
 
-export default function BottomNav({ activeScreen, onChange, cartCount }) {
+export default function BottomNav({ activeScreen, onChange, cartCount, unreadCount = 0 }) {
+  // Space taken by Android's navigation bar (0 when it is hidden).
+  const { bottom } = useSafeAreaInsets();
+
   return (
-    <View style={bottomNavStyles.nav}>
+    <View
+      style={[
+        bottomNavStyles.nav,
+        { height: bottomNavStyles.nav.height + bottom, paddingBottom: bottomNavStyles.nav.paddingBottom + bottom },
+      ]}
+    >
       {tabs.map((tab) => {
         const isActive = activeScreen === tab.key || (tab.key === 'cart' && activeScreen === 'checkout');
 
@@ -32,6 +41,11 @@ export default function BottomNav({ activeScreen, onChange, cartCount }) {
               {tab.key === 'cart' ? (
                 <View style={bottomNavStyles.badge}>
                   <Text style={bottomNavStyles.badgeText}>{cartCount}</Text>
+                </View>
+              ) : null}
+              {tab.key === 'notifications' && unreadCount > 0 ? (
+                <View style={bottomNavStyles.badge}>
+                  <Text style={bottomNavStyles.badgeText}>{unreadCount > 9 ? '9+' : unreadCount}</Text>
                 </View>
               ) : null}
             </View>

@@ -108,7 +108,7 @@ export default function App() {
   const [appAlert, setAppAlert] = useState(null);
   // This phone's FCM token once saved for the logged-in customer (used to remove it on logout).
   const [deviceToken, setDeviceToken] = useState(null);
-  const [permissionPrompt, setPermissionPrompt] = useState(null); // { canAskAgain } while the modal is shown
+  const [isPermissionPromptVisible, setIsPermissionPromptVisible] = useState(false);
   const [notifications, setNotifications] = useState([]);
   const [unreadCount, setUnreadCount] = useState(0);
   const [isNotificationsLoading, setIsNotificationsLoading] = useState(false);
@@ -207,24 +207,29 @@ export default function App() {
   };
 
   const allowNotifications = async () => {
-    const canAskAgain = permissionPrompt?.canAskAgain !== false;
-    setPermissionPrompt(null);
+    setIsPermissionPromptVisible(false);
 
-    if (!canAskAgain) {
-      // Android will not show its prompt again; the customer must enable it in Settings.
-      waitingForSettings.current = true;
-      Linking.openSettings().catch(() => {});
-      return;
-    }
-
+    // Always try Android's own "Allow notifications?" prompt first. Android's "can ask again"
+    // flag is not reliable before the app has actually asked, so it must not decide this up front.
+    const askedAt = Date.now();
     const permission = await requestNotificationPermissionAsync();
 
     if (permission.granted) {
       registerDevice();
+      return;
+    }
+
+    // Android answered instantly without showing its prompt: it has blocked the prompt for
+    // this app (denied too often), so the phone's Settings is the only way left.
+    const promptWasShown = Date.now() - askedAt > 700;
+
+    if (!promptWasShown && !permission.canAskAgain) {
+      waitingForSettings.current = true;
+      Linking.openSettings().catch(() => {});
     }
   };
 
-  const dismissPermissionPrompt = () => setPermissionPrompt(null);
+  const dismissPermissionPrompt = () => setIsPermissionPromptVisible(false);
 
   useEffect(() => {
     if (Platform.OS !== 'android') {
@@ -350,7 +355,7 @@ export default function App() {
       if (permission.granted) {
         registerDevice();
       } else {
-        setPermissionPrompt({ canAskAgain: permission.canAskAgain });
+        setIsPermissionPromptVisible(true);
       }
     });
 
@@ -565,7 +570,7 @@ export default function App() {
     setDeviceToken(null);
     setNotifications([]);
     setUnreadCount(0);
-    setPermissionPrompt(null);
+    setIsPermissionPromptVisible(false);
 
     try {
       await fetch(`${API_BASE_URL}/customer/logout`, {
@@ -1176,8 +1181,7 @@ export default function App() {
         onAddToCart={addDetailProductToCart}
       />
       <NotificationPermissionModal
-        visible={Boolean(permissionPrompt) && !isDetailVisible}
-        canAskAgain={permissionPrompt?.canAskAgain !== false}
+        visible={isPermissionPromptVisible && !isDetailVisible}
         onAllow={allowNotifications}
         onLater={dismissPermissionPrompt}
       />

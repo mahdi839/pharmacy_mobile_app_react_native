@@ -21,6 +21,7 @@ import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 
 import BottomNav from './components/BottomNav';
 import AppAlert from './components/AppAlert';
+import AppUpdateModal from './components/AppUpdateModal';
 import BannerCarousel from './components/BannerCarousel';
 import HomeProductSlider from './components/HomeProductSlider';
 import Navbar from './components/Navbar';
@@ -29,6 +30,7 @@ import ProductCard from './components/ProductCard';
 import ProductDetailModal from './components/ProductDetailModal';
 import SearchFilters from './components/SearchFilters';
 import { API_BASE_URL } from './config/api';
+import { APP_VERSION, checkForAppUpdateAsync, openAppUpdateAsync } from './services/appUpdate';
 import {
   fetchNotificationsAsync,
   fetchProductAsync,
@@ -57,6 +59,8 @@ const normalizedText = (value) => String(value || '').trim().toLowerCase();
 const baseHeaders = {
   Accept: 'application/json',
   'bypass-tunnel-reminder': 'true',
+  // Lets the server tell this version apart from the first Play Store version (which sends no version).
+  'X-App-Version': APP_VERSION,
 };
 const AUTH_SESSION_KEY = 'med-bangladesh-auth-session';
 
@@ -109,6 +113,7 @@ export default function App() {
   // This phone's FCM token once saved for the logged-in customer (used to remove it on logout).
   const [deviceToken, setDeviceToken] = useState(null);
   const [isPermissionPromptVisible, setIsPermissionPromptVisible] = useState(false);
+  const [appUpdate, setAppUpdate] = useState(null); // { required, message, ... } when a newer version exists
   const [notifications, setNotifications] = useState([]);
   const [unreadCount, setUnreadCount] = useState(0);
   const [isNotificationsLoading, setIsNotificationsLoading] = useState(false);
@@ -230,6 +235,32 @@ export default function App() {
   };
 
   const dismissPermissionPrompt = () => setIsPermissionPromptVisible(false);
+
+  useEffect(() => {
+    // Check for a newer app version on every app open and whenever the app comes back to the front.
+    const checkForUpdate = async () => {
+      const update = await checkForAppUpdateAsync(baseHeaders);
+
+      // A required update always shows; an optional one is not re-shown while the app stays open.
+      setAppUpdate((current) => {
+        if (!update) {
+          return null;
+        }
+
+        return update.required || !current?.dismissed ? update : current;
+      });
+    };
+
+    checkForUpdate();
+
+    const subscription = AppState.addEventListener('change', (state) => {
+      if (state === 'active') {
+        checkForUpdate();
+      }
+    });
+
+    return () => subscription.remove();
+  }, []);
 
   useEffect(() => {
     if (Platform.OS !== 'android') {
@@ -1148,17 +1179,34 @@ export default function App() {
     </ScrollView>
   );
 
+  const visibleAppUpdate = appUpdate && !appUpdate.dismissed ? appUpdate : null;
+
+  // Shown above every screen, including the login screen.
+  const appUpdateModal = (
+    <AppUpdateModal
+      update={visibleAppUpdate}
+      onUpdate={() => openAppUpdateAsync(appUpdate)}
+      onLater={() => setAppUpdate((current) => (current ? { ...current, dismissed: true } : current))}
+    />
+  );
+
   if (isAuthRestoring) {
     return (
       <View style={authStyles.page}>
         <StatusBar style="dark" />
         <ActivityIndicator color="#1a7f5a" size="large" />
+        {appUpdateModal}
       </View>
     );
   }
 
   if (!authUser) {
-    return renderAuth();
+    return (
+      <>
+        {renderAuth()}
+        {appUpdateModal}
+      </>
+    );
   }
 
   return (
@@ -1181,11 +1229,12 @@ export default function App() {
         onAddToCart={addDetailProductToCart}
       />
       <NotificationPermissionModal
-        visible={isPermissionPromptVisible && !isDetailVisible}
+        visible={isPermissionPromptVisible && !isDetailVisible && !visibleAppUpdate}
         onAllow={allowNotifications}
         onLater={dismissPermissionPrompt}
       />
       <AppAlert alert={appAlert} onClose={() => setAppAlert(null)} />
+      {appUpdateModal}
     </View>
   );
 }
